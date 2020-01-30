@@ -12,7 +12,7 @@
 
 class PasswdMgr {
    public:
-      PasswdMgr(const char *pwd_file);
+      PasswdMgr(const char *pwd_file, const char *temp_file);
       ~PasswdMgr();
 
       bool checkUser(const char *name);
@@ -30,6 +30,7 @@ class PasswdMgr {
       int writeUser(FileFD &pwfile, std::string &name, std::vector<uint8_t> &hash, std::vector<uint8_t> &salt);
 
       std::string _pwd_file;
+      std::string _temp_file;
 };
 
 #endif

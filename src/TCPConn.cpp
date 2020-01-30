@@ -4,11 +4,16 @@
 #include <cstring>
 #include <algorithm>
 #include <iostream>
+#include <fstream>
+#include <unordered_set>
+#include <sstream>
+#include <PasswdMgr.h>
 #include "TCPConn.h"
 #include "strfuncts.h"
 
 // The filename/path of the password file
-const char pwdfilename[] = "passwd";
+const char pwdfilename[] = "../src/data/authentication.txt";    // ***********Change for submission, note paths in write-up
+const char tempFile[] = "../src/data/tempFile.txt";
 
 TCPConn::TCPConn(){ // LogMgr &server_log):_server_log(server_log) {
 
@@ -62,7 +67,8 @@ void TCPConn::startAuthentication() {
    // Skipping this for now
    _status = s_username;
 
-   _connfd.writeFD("Username: "); 
+   _connfd.writeFD("Username: ");
+
 }
 
 /**********************************************************************************************
@@ -119,7 +125,67 @@ void TCPConn::handleConnection() {
  **********************************************************************************************/
 
 void TCPConn::getUsername() {
-   // Insert your mind-blowing code here
+    // Insert your mind-blowing code here
+    // File variables
+    std::ifstream authenticationFile;
+    authenticationFile.open(pwdfilename);
+    std::string line;        // String used for reading from the file
+    std::string uname;       // Used because...same as ss
+    std::stringstream ss;;   // Used because need two delimiters in the authentication file, for now
+    std::string newlineDelimiter = "\\n";   // \\n because of file setup when calling getline() -- reference line 143
+
+    // Networking variables
+    std::string readBuffer;
+
+    // Utility variables
+    int counter = 1;    // Used to alternate between username and password on file input. Start at 2 for modulo operations
+    std::vector<std::string> usernames;     // Hold the usernames from the file
+
+    if(authenticationFile){
+        while ( getline(authenticationFile, line) ) {
+            // Split username from file
+            uname = line.substr(0, line.find(newlineDelimiter));
+            usernames.push_back(uname);
+        }
+        authenticationFile.close();
+    }
+    else{
+        std::cout << "No username file exists\n";
+    }
+
+    // read the date on the socket
+    this->getUserInput(readBuffer);
+
+    // Check to input against the username list
+    // Look for the username in the vector
+    std::vector<std::string>::iterator it = find(usernames.begin(), usernames.end(), readBuffer);
+    // if here, username does not exist
+    if(it == usernames.end()){
+        this->sendText("Your username is not recognized. Good-Bye\n");
+        this->disconnect();
+        std::ofstream _server_log(this->logFile, std::ios::app);
+        if(_server_log.is_open()){
+            std::string ipaddr;
+            _connfd.getIPAddrStr(ipaddr);
+            time (&this->tt);
+            ti = localtime(&this->tt);
+
+            _server_log << "Failed connection attempt by " << readBuffer << ". IP: ipaddr" << "\t";
+            _server_log << asctime(this->ti);
+            _server_log << "\n";
+            _server_log.close();
+        }
+        else{
+            std::cout << "Error on opening log file, server.log\n";
+        }
+        // log file error
+    }
+    // username does exist
+    else{
+        this->_username = *it;
+        _connfd.writeFD("Enter Password: ");
+        this->_status = s_passwd;
+    }
 }
 
 /**********************************************************************************************
@@ -132,6 +198,59 @@ void TCPConn::getUsername() {
 
 void TCPConn::getPasswd() {
    // Insert your astounding code here
+
+   PasswdMgr manager(pwdfilename, tempFile);  // Password Manager File
+   std::string readBuffer;          // I/O Variables
+
+
+   // Get the user's password
+   this->getUserInput(readBuffer);
+
+   if(manager.checkPasswd(this->_username.c_str(), readBuffer.c_str())){
+       this->_pwd_attempts = 0;
+       this->_status = s_menu;
+       this->sendMenu();
+       std::string ipaddr;
+       _connfd.getIPAddrStr(ipaddr);
+       std::ofstream _server_log(this->logFile, std::ios::app);
+       if(_server_log.is_open()){
+           time (&this->tt);
+           ti = localtime(&this->tt);
+
+           _server_log << "Successful connection by " << readBuffer << ". IP: " << ipaddr << "\t";
+           _server_log << asctime(this->ti);
+           _server_log << "\n";
+           _server_log.close();
+       }
+       else{
+           std::cout << "Error on opening log file, server.log\n";
+       }
+   }
+   else{
+       this->_pwd_attempts++;
+   }
+   if(this->_pwd_attempts == 1){
+       this->sendText("Wrong. Try Again: ");
+   }
+   else if(this->_pwd_attempts == 2){
+       this->sendText("You had your chance. Good-Bye\n");
+       this->disconnect();
+       std::ofstream _server_log(this->logFile, std::ios::app);
+       std::string ipaddr;
+       _connfd.getIPAddrStr(ipaddr);
+       if(_server_log.is_open()){
+           time (&this->tt);
+           ti = localtime(&this->tt);
+
+           _server_log << "Disconnected. Failed password attempt by " << this->_username << ". IP: " << ipaddr << "\t";
+           _server_log << asctime(this->ti);
+           _server_log << "\n";
+           _server_log.close();
+       }
+       else{
+           std::cout << "Error on opening log file, server.log\n";
+       }
+   }
 }
 
 /**********************************************************************************************
@@ -145,6 +264,38 @@ void TCPConn::getPasswd() {
 
 void TCPConn::changePassword() {
    // Insert your amazing code here
+   PasswdMgr manager(pwdfilename, tempFile);
+
+   // Get the user's new password input on status flag, end
+   if(this->_status == s_changepwd){
+       this->getUserInput(this->_newpwd);
+       this->sendText("Re-enter: ");
+       this->_status = s_confirmpwd;
+   }
+   else{
+       // Helper variables
+       PasswdMgr manager(pwdfilename, tempFile);
+       std::string reEnteredPwd;
+
+       this->getUserInput(reEnteredPwd);
+
+       // This is a valid input. Therefore, change the password
+       if(reEnteredPwd == this->_newpwd){
+           if(manager.changePasswd(this->_username.c_str(), this->_newpwd.c_str()), tempFile){
+               // Successful change
+               this->sendText("Password Successfully Changed\n");
+               this->sendText("Type <Menu> for...the menu\n");
+               this->_status = s_menu;
+           }
+           else{
+               this->sendText("Error Changing Password. Type <Menu> to go home.\n");
+               this->_status = s_menu;
+               //failed change
+           }
+       }
+   }
+
+
 }
 
 
@@ -206,6 +357,21 @@ void TCPConn::getMenuChoice() {
       sendMenu();
    } else if (cmd.compare("exit") == 0) {
       _connfd.writeFD("Disconnecting...goodbye!\n");
+       std::ofstream _server_log(this->logFile, std::ios::app);
+       if(_server_log.is_open()){
+           std::string ipaddr;
+           _connfd.getIPAddrStr(ipaddr);
+           time (&this->tt);
+           ti = localtime(&this->tt);
+
+           _server_log << "Disconnected. " << this->_username << ". IP: " << ipaddr << "\t";
+           _server_log << asctime(this->ti);
+           _server_log << "\n";
+           _server_log.close();
+       }
+       else{
+           std::cout << "Error on opening log file, server.log\n";
+       }
       disconnect();
    } else if (cmd.compare("passwd") == 0) {
       _connfd.writeFD("New Password: ");
@@ -281,8 +447,25 @@ bool TCPConn::isConnected() {
 /**********************************************************************************************
  * getIPAddrStr - gets a string format of the IP address and loads it in buf
  *
+ * Why does this return if it is void? What is the point of this function? Reference, but again,
+ *          why return?
  **********************************************************************************************/
 void TCPConn::getIPAddrStr(std::string &buf) {
    return _connfd.getIPAddrStr(buf);
 }
 
+/**********************************************************************************************
+ * checkValidIPAddr - Does exactly that. This function is called before any storage of the TCPConn
+ *                 object in TCPServer.cpp
+ *
+ * Help: https://www.techiedelight.com/check-vector-contains-given-element-cpp/
+ **********************************************************************************************/
+ bool TCPConn::checkValidIPAddr(std::string &ipAddr, std::vector<std::string> theWhitelist){
+    // If the element is on the whitelist, return true
+    if(std::find(theWhitelist.begin(), theWhitelist.end(), ipAddr) != theWhitelist.end()){
+        return true;
+    }
+    else{
+        return false;
+    }
+ }

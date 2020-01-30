@@ -10,7 +10,10 @@
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <fstream>
+#include <ctime>
 #include "TCPServer.h"
+#include "strfuncts.h"
 
 TCPServer::TCPServer(){ // :_server_log("server.log", 0) {
 }
@@ -31,7 +34,19 @@ void TCPServer::bindSvr(const char *ip_addr, short unsigned int port) {
 
    struct sockaddr_in servaddr;
 
-   // _server_log.writeLog("Server started.");
+    std::ofstream _server_log(this->logFile, std::ios::app);
+    if(_server_log.is_open()){
+        time (&this->tt);
+        ti = localtime(&this->tt);
+
+        _server_log << "Server Started.\t";
+        _server_log << asctime(this->ti);
+        _server_log << "\n";
+        _server_log.close();
+    }
+    else{
+        std::cout << "Error on opening log file, server.log\n";
+    }
 
    // Set the socket to nonblocking
    _sockfd.setNonBlocking();
@@ -60,7 +75,10 @@ void TCPServer::listenSvr() {
    // Start the server socket listening
    _sockfd.listenFD(5);
 
-    
+   // Initialize the whitelist
+   // ************************* IMPORTANT ********************** file path stuff with this. Figure it out
+   this->initWhitelist(this->whitelistFile);
+
    while (online) {
       struct sockaddr_in cliaddr;
       socklen_t len = sizeof(cliaddr);
@@ -73,17 +91,50 @@ void TCPServer::listenSvr() {
          }
          std::cout << "***Got a connection***\n";
 
-         _connlist.push_back(std::unique_ptr<TCPConn>(new_conn));
+         // Check ip address against whitelist here?
+          // Get their IP Address string to use in logging
+          // Moved this from immediately below _connlist.push_back() because I will check the ip address prior to doing anything else
+          std::string ipaddr_str;
+          new_conn->getIPAddrStr(ipaddr_str);
 
-         // Get their IP Address string to use in logging
-         std::string ipaddr_str;
-         new_conn->getIPAddrStr(ipaddr_str);
+          // Check if valid ip address
+          if(!this->isValidIP(*new_conn, ipaddr_str)){
+              std::ofstream _server_log(this->logFile, std::ios::app);
+              if(_server_log.is_open()){
+                  time (&this->tt);
+                  ti = localtime(&this->tt);
 
+                  _server_log << "Connection from " << ipaddr_str << " refused\t";
+                  _server_log << asctime(this->ti);
+                  _server_log << "\n";
+                  _server_log.close();
+              }
+              else{
+                  std::cout << "Error on opening log file, server.log\n";
+              }
+              delete new_conn;
+              continue;
+          }
 
          new_conn->sendText("Welcome to the CSCE 689 Server!\n");
+          std::ofstream _server_log(this->logFile, std::ios::app);
+          if(_server_log.is_open()){
+              time (&this->tt);
+              ti = localtime(&this->tt);
+
+              _server_log << "Connection received from " << ipaddr_str << ".\t";
+              _server_log << asctime(this->ti);
+              _server_log << "\n";
+              _server_log.close();
+          }
+          else{
+              std::cout << "Error on opening log file, server.log\n";
+          }
 
          // Change this later
          new_conn->startAuthentication();
+
+         _connlist.push_back(std::unique_ptr<TCPConn>(new_conn));
       }
 
       // Loop through our connections, handling them
@@ -127,4 +178,47 @@ void TCPServer::shutdown() {
    _sockfd.closeFD();
 }
 
+bool TCPServer::isValidIP(TCPConn connection, std::string ipAddr) {
+    if(this->numWhitelisted > 0){
+        if(!connection.checkValidIPAddr(ipAddr, this->getWhitelist())) {
+            connection.sendText("You are not permitted. Bye.\n");
+            connection.disconnect();
+            return false;
+        }
+        return true;
+    }
+}
+/**********************************************************************************************
+ * shutdown - Initializes a whitelist to be stored here
+ *
+ *      Questions: Should this be the case? Or should I reread the whitelist file every single
+ *          time a new connection is made? It seems like have a file would be faster, but potentially
+ *          lead to more memory usage. By doing it this way, I am assuming a small whitelist
+ * Help from: http://www.cplusplus.com/doc/tutorial/files/
+ **********************************************************************************************/
+ void TCPServer::initWhitelist(std::string fname) {
+     std::string line;
+     std::ifstream file(fname);
+
+     if(file.is_open()) {
+         while (getline(file, line)) {
+             clrNewlines(line);
+             this->whitelist.push_back(line);
+             this->numWhitelisted++;
+         }
+     }
+     else{
+         std::cout << "No such file\n";
+     }
+     // else{log to system no file exists}
+     file.close();
+ }
+
+/**********************************************************************************************
+* getWhitelist() - Just a getter
+*
+**********************************************************************************************/
+ std::vector<std::string> TCPServer::getWhitelist(){
+     return this->whitelist;
+ }
 

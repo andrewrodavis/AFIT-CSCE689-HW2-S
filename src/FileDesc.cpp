@@ -44,7 +44,7 @@ void FileDesc::setNonBlocking() {
  *
  *    Returns: returns the results of the FD write function, 1 for success, -1 for failure
  *****************************************************************************************/
-ssize_t FileDesc::writeByte(unsigned char data) {
+ssize_t FileDesc::writeByte(std::basic_string<char> data) {
    return write(_fd, &data, 1);
 }
 

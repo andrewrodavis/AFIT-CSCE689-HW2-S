@@ -12,7 +12,10 @@
 #include "FileDesc.h"
 #include "strfuncts.h"
 
-using namespace std; 
+using namespace std;
+
+const char pwdFile[] = "../src/data/authentication.txt";
+const char tempFile[] = "../src/data/tempFile.txt";
 
 void displayHelp(const char *execname) {
    std::cout << execname << " <username>\n";
@@ -37,7 +40,7 @@ int main(int argc, char *argv[]) {
 
    // Check if the user already exists
    std::vector<uint8_t> hash, salt;
-   PasswdMgr pwm("passwd");
+   PasswdMgr pwm(pwdFile, tempFile);
    
    if (pwm.checkUser(username.c_str()))
    {

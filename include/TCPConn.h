@@ -35,6 +35,7 @@ public:
    unsigned long getIPAddr() { return _connfd.getIPAddr(); };
    void getIPAddrStr(std::string &buf);
    const char *getUsernameStr() { return _username.c_str(); };
+   bool checkValidIPAddr(std::string &ipAddr, std::vector<std::string> whitelist);
 
 private:
 
@@ -42,16 +43,16 @@ private:
    enum statustype { s_username, s_changepwd, s_confirmpwd, s_passwd, s_menu };
 
    statustype _status = s_username;
-
    SocketFD _connfd;
- 
    std::string _username; // The username this connection is associated with
-
    std::string _inputbuf;
-
    std::string _newpwd; // Used to store user input for changing passwords
-
    int _pwd_attempts = 0;
+
+   // Logging
+   std::string logFile = "../src/data/server.log";
+    time_t tt;  //https://www.geeksforgeeks.org/c-program-print-current-day-date-time/
+    struct tm * ti;
 };
 
 

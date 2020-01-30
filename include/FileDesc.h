@@ -40,7 +40,7 @@ public:
    ssize_t readByte(unsigned char &buf);
 
    // Writes a single byte to the FD
-   ssize_t writeByte(unsigned char data);
+   ssize_t writeByte(std::basic_string<char> data);
 
    // Checks if the FD has data available to be read
    bool hasData(long ms_timeout = 10);
